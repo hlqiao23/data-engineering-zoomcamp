@@ -42,13 +42,17 @@ How many taxi trips were there on the 15th of October?
 
 Consider only trips that started on the 15th of October.
 
-- 85,567
-- 105,567
-- 125,567
-- 145,567
+- 108,164
+- 12,856
+- 452,470
+- 62,610
 
+> [!IMPORTANT]
+> Be aware of columns order when defining schema
 
-## Question 4: Longest trip
+### Question 4: 
+
+**Longest trip for each day** 
 
 What is the length of the longest trip in the dataset in hours?
 
