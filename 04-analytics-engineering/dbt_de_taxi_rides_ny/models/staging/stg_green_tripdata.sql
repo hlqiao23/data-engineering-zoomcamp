@@ -10,6 +10,7 @@ with tripdata as
     row_number() over(partition by vendorid, lpep_pickup_datetime) as rn
   from {{ source('staging','green_tripdata') }}
   where vendorid is not null 
+  AND EXTRACT(YEAR FROM cast(lpep_pickup_datetime as timestamp)) IN (2019, 2020) AND EXTRACT(YEAR FROM cast(lpep_dropoff_datetime as timestamp)) IN (2019, 2020)
 )
 select
     -- identifiers
