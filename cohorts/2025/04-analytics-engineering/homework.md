@@ -149,8 +149,44 @@ Considering the YoY Growth in 2020, which were the yearly quarters with the best
 - green: {best: 2020/Q2, worst: 2020/Q1}, yellow: {best: 2020/Q2, worst: 2020/Q1}
 - green: {best: 2020/Q2, worst: 2020/Q1}, yellow: {best: 2020/Q3, worst: 2020/Q4}
 - green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q2, worst: 2020/Q1}
-- green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q1, worst: 2020/Q2}
+- green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q1, worst: 2020/Q2} --YES
 - green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q3, worst: 2020/Q4}
+
+Answer:
+fct_taxt_trips_quarterly_revenue.sql
+`SQL
+
+{{ config(materialized="table") }}
+
+with
+    trips_data as (
+        select *, format_date('%Y-%Q', date(pickup_datetime)) as year_quarter
+        from {{ ref("fact_trips") }}
+    ),
+    quarterly_revenue as (
+        select
+            -- Revenue grouping 
+            service_type,
+            year_quarter,
+            sum(total_amount) as revenue_quarterly_total_amount
+        from trips_data
+        group by 1, 2
+    )
+select
+    service_type,
+    year_quarter,
+    revenue_quarterly_total_amount,
+    lag(revenue_quarterly_total_amount) over (
+        partition by service_type order by year_quarter
+    ) as previous_revenue_quarterly_total_amount,
+    (
+        revenue_quarterly_total_amount - lag(revenue_quarterly_total_amount) over (partition by service_type order by year_quarter)
+    ) / nullif(
+        lag(revenue_quarterly_total_amount) over (partition by service_type order by year_quarter), 0
+    ) as qoq_growth
+from quarterly_revenue
+order by 1, 2
+`
 
 
 ### Question 6: P97/P95/P90 Taxi Monthly Fare
