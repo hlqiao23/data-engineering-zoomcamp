@@ -149,9 +149,43 @@ Considering the YoY Growth in 2020, which were the yearly quarters with the best
 - green: {best: 2020/Q2, worst: 2020/Q1}, yellow: {best: 2020/Q2, worst: 2020/Q1}
 - green: {best: 2020/Q2, worst: 2020/Q1}, yellow: {best: 2020/Q3, worst: 2020/Q4}
 - green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q2, worst: 2020/Q1}
-- green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q1, worst: 2020/Q2}
+- green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q1, worst: 2020/Q2} --YES
 - green: {best: 2020/Q1, worst: 2020/Q2}, yellow: {best: 2020/Q3, worst: 2020/Q4}
 
+Answer:
+```sql
+{{ config(materialized="table") }}
+
+with
+    trips_data as (
+        select *, format_date('%Y-%Q', date(pickup_datetime)) as year_quarter
+        from {{ ref("fact_trips") }}
+    ),
+    quarterly_revenue as (
+        select
+            -- Revenue grouping 
+            service_type,
+            year_quarter,
+            sum(total_amount) as revenue_quarterly_total_amount
+        from trips_data
+        group by 1, 2
+    )
+select
+    service_type,
+    year_quarter,
+    revenue_quarterly_total_amount,
+    lag(revenue_quarterly_total_amount) over (
+        partition by service_type order by year_quarter
+    ) as previous_revenue_quarterly_total_amount,
+    (
+        revenue_quarterly_total_amount - lag(revenue_quarterly_total_amount) over (partition by service_type order by year_quarter)
+    ) / nullif(
+        lag(revenue_quarterly_total_amount) over (partition by service_type order by year_quarter), 0
+    ) as qoq_growth
+from quarterly_revenue
+order by 1, 2
+
+```
 
 ### Question 6: P97/P95/P90 Taxi Monthly Fare
 
@@ -162,10 +196,43 @@ Considering the YoY Growth in 2020, which were the yearly quarters with the best
 Now, what are the values of `p97`, `p95`, `p90` for Green Taxi and Yellow Taxi, in April 2020?
 
 - green: {p97: 55.0, p95: 45.0, p90: 26.5}, yellow: {p97: 52.0, p95: 37.0, p90: 25.5}
-- green: {p97: 55.0, p95: 45.0, p90: 26.5}, yellow: {p97: 31.5, p95: 25.5, p90: 19.0}
+- green: {p97: 55.0, p95: 45.0, p90: 26.5}, yellow: {p97: 31.5, p95: 25.5, p90: 19.0} --YES
 - green: {p97: 40.0, p95: 33.0, p90: 24.5}, yellow: {p97: 52.0, p95: 37.0, p90: 25.5}
 - green: {p97: 40.0, p95: 33.0, p90: 24.5}, yellow: {p97: 31.5, p95: 25.5, p90: 19.0}
 - green: {p97: 55.0, p95: 45.0, p90: 26.5}, yellow: {p97: 52.0, p95: 25.5, p90: 19.0}
+
+```sql
+{{ config(materialized='table') }}
+
+WITH valid_trips AS (
+    SELECT
+        service_type,
+        EXTRACT(YEAR FROM pickup_datetime) AS year,
+        EXTRACT(MONTH FROM pickup_datetime) AS month,
+        fare_amount
+
+    FROM {{ ref('fact_trips') }}
+    WHERE 
+        fare_amount > 0
+        AND trip_distance > 0
+        AND payment_type_description IN ('Cash', 'Credit card')
+),
+
+percentiles AS (
+    SELECT 
+        DISTINCT
+        service_type,
+        year,
+        month,
+        PERCENTILE_CONT(fare_amount, 0.97) OVER (PARTITION BY service_type, year, month) AS p97,
+        PERCENTILE_CONT(fare_amount, 0.95) OVER (PARTITION BY service_type, year, month) AS p95,
+        PERCENTILE_CONT(fare_amount, 0.90) OVER (PARTITION BY service_type, year, month) AS p90
+    FROM valid_trips
+    
+)
+
+SELECT * FROM percentiles
+```
 
 
 ### Question 7: Top #Nth longest P90 travel time Location for FHV
@@ -182,11 +249,109 @@ Now...
 
 For the Trips that **respectively** started from `Newark Airport`, `SoHo`, and `Yorkville East`, in November 2019, what are **dropoff_zones** with the 2nd longest p90 trip_duration ?
 
-- LaGuardia Airport, Chinatown, Garment District
+- LaGuardia Airport, Chinatown, Garment District --YES
 - LaGuardia Airport, Park Slope, Clinton East
 - LaGuardia Airport, Saint Albans, Howard Beach
 - LaGuardia Airport, Rosedale, Bath Beach
 - LaGuardia Airport, Yorkville East, Greenpoint
+
+Answer: 
+1. staging model: 
+```sql
+{{ config(materialized="view") }}
+
+with
+    tripdata as (
+        select *
+        from {{ source("staging", "fhv_tripdata") }}
+        where dispatching_base_num is not null
+    )
+select
+
+    dispatching_base_num,
+    cast(pickup_datetime as timestamp) as pickup_datetime,
+    cast(dropoff_datetime as timestamp) as dropoff_datetime,
+    cast(pulocationid as int) as pulocationid,
+    cast(dolocationid as int) as dolocationid,
+    sr_flag,
+    affiliated_base_number
+
+from tripdata
+
+-- dbt build --select <model_name> --vars '{'is_test_run': 'false'}'
+{% if var("is_test_run", default=true) %} limit 100 {% endif %}
+```
+
+2. core model
+```sql
+{{ config(materialized="table") }}
+
+with
+    tripdata as (select * from {{ ref("stg_fhv_tripdata") }}),
+
+    dim_zones as (select * from {{ ref("dim_zones") }} where borough != 'Unknown')
+
+select
+
+    tripdata.dispatching_base_num,
+    tripdata.pickup_datetime,
+    tripdata.dropoff_datetime,
+    extract(year from tripdata.pickup_datetime) as year,
+    extract(month from tripdata.pickup_datetime) as month,
+    tripdata.pulocationid,
+    pickup_zone.borough as pickup_borough,
+    pickup_zone.zone as pickup_zone,
+    tripdata.dolocationid,
+    dropoff_zone.borough as dropoff_borough,
+    dropoff_zone.zone as dropoff_zone,
+    tripdata.sr_flag,
+    tripdata.affiliated_base_number
+
+from tripdata
+inner join dim_zones as pickup_zone on tripdata.pulocationid = pickup_zone.locationid
+inner join dim_zones as dropoff_zone on tripdata.dolocationid = dropoff_zone.locationid
+```
+
+3. fct_fhv_monthly_zone_traveltime_p90.sql
+```sql
+{{ config(materialized="table") }}
+
+with
+    trip_duration_calculated as (
+        select
+            *,
+            timestamp_diff(dropoff_datetime, pickup_datetime, second) as trip_duration
+        from {{ ref("dim_fhv_trips") }}
+    )
+
+select
+
+    *,
+    percentile_cont(trip_duration, 0.90) over (
+        partition by year, month, pulocationid, dolocationid
+    ) as trip_duration_p90
+
+from trip_duration_calculated
+```
+
+4. query the created table
+```sql
+WITH ranked_data AS (
+    SELECT 
+        pickup_zone,
+        dropoff_zone,
+        trip_duration_p90,
+        DENSE_RANK() OVER (PARTITION BY pickup_zone ORDER BY trip_duration_p90 DESC) AS rank
+    FROM `robotic-incline-449301-g8.zoomcamp.fct_fhv_monthly_zone_traveltime_p90`
+    WHERE month = 11 AND year = 2019 AND pickup_zone IN ('Newark Airport', 'SoHo', 'Yorkville East')
+)
+SELECT DISTINCT 
+    pickup_zone, 
+    dropoff_zone, 
+    trip_duration_p90
+FROM ranked_data
+```
+
 
 
 ## Submitting the solutions
