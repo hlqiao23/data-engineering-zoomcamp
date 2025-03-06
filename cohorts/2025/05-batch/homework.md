@@ -18,6 +18,8 @@ wget https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-10.par
 
 What's the output?
 
+3.5.5
+
 > [!NOTE]
 > To install PySpark follow this [guide](https://github.com/DataTalksClub/data-engineering-zoomcamp/blob/main/05-batch/setup/pyspark.md)
 
@@ -31,7 +33,7 @@ Repartition the Dataframe to 4 partitions and save it to parquet.
 What is the average size of the Parquet (ending with .parquet extension) Files that were created (in MB)? Select the answer which most closely matches.
 
 - 6MB
-- 25MB
+- 25MB --YES
 - 75MB
 - 100MB
 
@@ -44,7 +46,7 @@ Consider only trips that started on the 15th of October.
 
 - 85,567
 - 105,567
-- 125,567
+- 125,567 --YES
 - 145,567
 
 
@@ -54,7 +56,7 @@ What is the length of the longest trip in the dataset in hours?
 
 - 122
 - 142
-- 162
+- 162 --YES
 - 182
 
 
@@ -64,7 +66,7 @@ Spark’s User Interface which shows the application's dashboard runs on which l
 
 - 80
 - 443
-- 4040
+- 4040 --YES
 - 8080
 
 
@@ -79,7 +81,7 @@ wget https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv
 
 Using the zone lookup data and the Yellow October 2024 data, what is the name of the LEAST frequent pickup location Zone?
 
-- Governor's Island/Ellis Island/Liberty Island
+- Governor's Island/Ellis Island/Liberty Island --YES
 - Arden Heights
 - Rikers Island
 - Jamaica Bay
